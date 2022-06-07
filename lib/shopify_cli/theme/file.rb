@@ -104,6 +104,10 @@ module ShopifyCLI
         @relative_path.to_s
       end
 
+      def size
+        ::File.size(absolute_path)
+      end
+
       private
 
       def normalize_json(content)

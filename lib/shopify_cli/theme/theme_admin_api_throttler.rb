@@ -16,11 +16,15 @@ module ShopifyCLI
       def initialize(ctx, admin_api)
         @ctx = ctx
         @admin_api = admin_api
-        @active = false
+        @active = true
+        @current_batch_size = 0
+        @current_batch_reqs = []
+        @batch = Batch.new(@admin_api)
       end
 
       def put(path:, **args, &block)
-        if active?
+        asset_size = JSON.parse(args[:body])["asset"]["size"]
+        if active? && asset_size <= BatchRequest::MAX_BATCH_SIZE # if batching is active and valid
           batch_request(method: "PUT", path: bulk_path(path), **args, &block)
         else
           rest_request(method: "PUT", path: path, **args, &block)
@@ -47,21 +51,70 @@ module ShopifyCLI
 
       private
 
-      def batch_request(method:, path:, **args, &block)
-        request = BatchRequest.new(method, path, args)
+      def enqueue_batch(&block)
+        puts "Current Batch: #{@current_batch_reqs.size} Files, #{@current_batch_size} Bytes"
+        # grouped_request = RequestParser.new(@current_batch_reqs).parse
+        # @current_batch_reqs = []
+        # @current_batch_size = 0
 
-        batch.enqueue(request)
-        return unless batch.ready?(request)
+        # status, body, response = @admin_api.rest_request(**grouped_request)
+        # resp_parser = ResponseParser.new(body)
+        # resp_parser.parse.each do |req|
+        #   block.call(status, req, response)
+        # end
 
-        block.call(batch.request)
+        # Async Code
+        batch_request = BatchRequest.new(size: @current_batch_size, reqs: @current_batch_reqs, admin_api: @admin_api, &block)
+        @current_batch_size = 0
+        @current_batch_reqs = []
+        puts "#{Thread.current}"
+        @batch.enqueue(batch_request)
       end
 
-      def batch
-        @batch ||= Batch.new(@admin_api)
+      def check_batch_ready(&block)
+        if @current_batch_reqs.size == BatchRequest::MAX_BATCH_FILES || @current_batch_size == BatchRequest::MAX_BATCH_SIZE
+          enqueue_batch(&block)
+        else
+          curr_size = @current_batch_size
+          curr_num = @current_batch_reqs.size
+          Thread.new do
+            catch(:stop_thread) do
+              sleep(BatchRequest::BATCH_TIMEOUT)
+              return if @current_batch_reqs.empty?
+              enqueue_batch(&block) if curr_num == @current_batch_reqs.size && curr_size == @current_batch_size
+            end
+          end
+        end
+      end
+
+      def batch_request(method:, path:, **args, &block)
+        request = format_request(method: method, path: path, **args)
+        asset_size = request[:body]["asset"]["size"]
+        puts "Processing file: #{request[:body]["asset"]["key"]}: #{asset_size} bytes"
+        if @current_batch_reqs.size == BatchRequest::MAX_BATCH_FILES || @current_batch_size + asset_size > BatchRequest::MAX_BATCH_SIZE
+          enqueue_batch(&block)
+        end
+        append_to_batch(request)
+        check_batch_ready(&block)
       end
 
       def bulk_path(path)
         path.gsub(/.json$/, "/bulk.json")
+      end
+
+      def format_request(method:, path:, **args)
+        {
+          shop: @admin_api.shop,
+          path: path,
+          method: method,
+          api_version: ThemeAdminAPI::API_VERSION, #TODO: need access to the API_VERSION
+          body: args[:body].is_a?(Hash) ? args[:body] : JSON.parse(args[:body])
+        }
+      end
+
+      def append_to_batch(request)
+        @current_batch_reqs << request
+        @current_batch_size += request[:body]["asset"]["size"]
       end
     end
   end

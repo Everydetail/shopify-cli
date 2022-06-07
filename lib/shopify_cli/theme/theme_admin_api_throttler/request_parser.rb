@@ -12,7 +12,7 @@ module ShopifyCLI
 
         def parse
           {
-            shop: fetch(:shop),
+            shop: fetch(:shop), 
             path: fetch(:path),
             method: fetch(:method),
             api_version: "unstable",
@@ -24,7 +24,7 @@ module ShopifyCLI
 
         def assets
           @list_of_params.map do |params|
-            body = JSON.parse(params[:body])
+            body = params[:body].is_a?(Hash) ? params[:body] : JSON.parse(params[:body])
             body["asset"]
           end
         end

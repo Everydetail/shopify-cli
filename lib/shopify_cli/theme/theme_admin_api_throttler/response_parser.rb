@@ -11,24 +11,9 @@ module ShopifyCLI
         end
 
         def parse
-        end
-
-        private
-
-        def assets
-          @response_body.map do |response_bodies|
-            body = JSON.parse(response_bodies[:body])
-            body["asset"]
-          end
-        end
-
-        def fetch(key)
-          values = @response_body.map { |response_bodies| response_bodies[key] }.uniq
-
-          return values.first if values.one?
-
-          error_message = "requests with multiple values for '#{key}' cannot be parsed"
-          raise Errors::RequestParserError, error_message
+          result = []
+          @response_body["results"].map { |resp| result << resp["body"] }
+          result
         end
       end
     end

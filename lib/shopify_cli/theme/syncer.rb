@@ -64,10 +64,8 @@ module ShopifyCLI
 
         # Checksums of assets with errors.
         @error_checksums = []
-      end
 
-      def api_client
-        @api_client ||= ThemeAdminAPIThrottler.new(
+        @api_client = ThemeAdminAPIThrottler.new(
           @ctx,
           ThemeAdminAPI.new(@ctx, @theme.shop)
         )
@@ -131,7 +129,7 @@ module ShopifyCLI
       end
 
       def fetch_checksums!
-        _status, response = api_client.get(
+        _status, response = @api_client.get(
           path: "themes/#{@theme.id}/assets.json"
         )
         update_checksums(response)
@@ -140,7 +138,7 @@ module ShopifyCLI
       def shutdown
         @queue.close unless @queue.closed?
       ensure
-        @threads.each { |thread| thread.join if thread.alive? }
+        @threads.each { |thread| p thread; thread.join if thread.alive? }
       end
 
       def start_threads(count = 2)
@@ -263,7 +261,7 @@ module ShopifyCLI
       end
 
       def update(file)
-        asset = { key: file.relative_path }
+        asset = { key: file.relative_path, size: file.size }
 
         if file.text?
           asset[:value] = file.read
@@ -274,14 +272,14 @@ module ShopifyCLI
         path = "themes/#{@theme.id}/assets.json"
         req_body = JSON.generate(asset: asset)
 
-        api_client.put(path: path, body: req_body) do |_s, resp_body, response|
+        @api_client.put(path: path, body: req_body) do |_s, resp_body, response|
           update_checksums(resp_body)
           yield(response)
         end
       end
 
       def get(file)
-        _status, body, response = api_client.get(
+        _status, body, response = @api_client.get(
           path: "themes/#{@theme.id}/assets.json",
           query: URI.encode_www_form("asset[key]" => file.relative_path),
         )
@@ -299,7 +297,7 @@ module ShopifyCLI
       end
 
       def delete(file)
-        _status, _body, response = api_client.delete(
+        _status, _body, response = @api_client.delete(
           path: "themes/#{@theme.id}/assets.json",
           body: JSON.generate(asset: {
             key: file.relative_path,
@@ -310,7 +308,7 @@ module ShopifyCLI
       end
 
       def union_merge(file)
-        _status, body, response = api_client.get(
+        _status, body, response = @api_client.get(
           path: "themes/#{@theme.id}/assets.json",
           query: URI.encode_www_form("asset[key]" => file.relative_path),
         )
@@ -366,6 +364,10 @@ module ShopifyCLI
       def wait_for_backoff!
         # Sleeping in the mutex in another thread. Wait for unlock
         @backoff_mutex.synchronize {} if backingoff?
+      end
+
+      def async_done?
+        @api_client.batch
       end
     end
   end

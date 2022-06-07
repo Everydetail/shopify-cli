@@ -18,7 +18,7 @@ module ShopifyCLI
         def wait_request(request)
           retries = 10
 
-          while request.done?
+          until request.done?
             retries -= 1
             wait
           end
