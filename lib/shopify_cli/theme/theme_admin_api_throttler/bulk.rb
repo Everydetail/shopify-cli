@@ -8,7 +8,7 @@ module ShopifyCLI
       class Bulk
         def initialize(admin_api)
           @admin_api = admin_api
-          @thread_pool = ShopifyCLI::ThreadPool.new
+          @thread_pool = ShopifyCLI::ThreadPool.new(pool_size: 1)
           # @latest_enqueued_request =
           # @latest_enqueued_at = 
         end
