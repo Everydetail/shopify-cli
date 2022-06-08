@@ -59,30 +59,36 @@ module ShopifyCLI
           })
           parsed_response = parser.parse
           expected_response = [
-            {
-              "asset": {
-                "key": "templates/index.liquid",
-                "public_url": nil,
-                "created_at": "2022-04-05T13:20:49-04:00",
-                "updated_at": "2022-04-05T13:20:49-04:00",
-                "content_type": "application/x-liquid",
-                "size": 3049,
-                "checksum": "1879a06996941b2ff1ff485a1fe60a97",
-                "theme_id": 828155753,
+            [
+              200,
+              {
+                "asset": {
+                  "key": "templates/index.liquid",
+                  "public_url": nil,
+                  "created_at": "2022-04-05T13:20:49-04:00",
+                  "updated_at": "2022-04-05T13:20:49-04:00",
+                  "content_type": "application/x-liquid",
+                  "size": 3049,
+                  "checksum": "1879a06996941b2ff1ff485a1fe60a97",
+                  "theme_id": 828155753,
+                },
+              }
+            ],
+            [
+              200,
+              {
+                "asset": {
+                  "key": "icon-minus.liquid",
+                  "public_url": nil,
+                  "created_at": "2022-04-05T13:20:49-04:00",
+                  "updated_at": "2022-04-05T13:20:49-04:00",
+                  "content_type": "application/x-liquid",
+                  "size": 3049,
+                  "checksum": "1879a06996941b2323456f485a1fe60a97",
+                  "theme_id": 828155753,
+                },
               },
-            },
-            {
-              "asset": {
-                "key": "icon-minus.liquid",
-                "public_url": nil,
-                "created_at": "2022-04-05T13:20:49-04:00",
-                "updated_at": "2022-04-05T13:20:49-04:00",
-                "content_type": "application/x-liquid",
-                "size": 3049,
-                "checksum": "1879a06996941b2323456f485a1fe60a97",
-                "theme_id": 828155753,
-              },
-            },
+            ]
           ]
 
           assert_equal(parsed_response, expected_response)
