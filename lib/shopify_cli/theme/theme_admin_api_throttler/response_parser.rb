@@ -12,7 +12,9 @@ module ShopifyCLI
 
         def parse
           result = []
-          @response_body["results"].map { |resp| result << resp["body"] }
+          @response_body["results"]&.each do |resp|
+            result << [resp["code"], resp["body"]]
+          end
           result
         end
       end

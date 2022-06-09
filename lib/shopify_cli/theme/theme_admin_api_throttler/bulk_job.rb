@@ -19,14 +19,18 @@ module ShopifyCLI
 
         def perform!
           return unless bulk.ready?
+          puts "Performing job!"
 
-          bulk_status, bulk_body, bulk_response = @admin_api.rest_request(**bulk_request)
+          bulk_status, bulk_body, bulk_response = bulk.admin_api.rest_request(**bulk_request)
+
+          puts "Body: #{bulk_body}"
 
           responses(bulk_response).each do |tuple|
             status, body = tuple
-            
             bulk.call_block(status, body, bulk_response)
           end
+          rescue => e
+          puts "ERROR: #{e}"
         end
 
         private
