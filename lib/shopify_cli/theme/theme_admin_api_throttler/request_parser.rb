@@ -6,36 +6,34 @@ module ShopifyCLI
   module Theme
     class ThemeAdminAPIThrottler
       class RequestParser
-        def initialize(list_of_params)
-          @list_of_params = list_of_params
+        def initialize(requests)
+          @requests = requests
         end
 
         def parse
           {
-            shop: fetch(:shop), 
-            path: fetch(:path),
-            method: fetch(:method),
-            api_version: "unstable",
+            path: path,
+            method: method,
             body: JSON.generate({ assets: assets }),
           }
         end
 
         private
 
-        def assets
-          @list_of_params.map do |params|
-            body = params[:body].is_a?(Hash) ? params[:body] : JSON.parse(params[:body])
-            body["asset"]
-          end
+        def method
+          @requests.sample.method
         end
 
-        def fetch(key)
-          values = @list_of_params.map { |params| params[key] }.uniq
+        def path
+          @requests.sample.bulk_path
+        end
 
-          return values.first if values.one?
-
-          error_message = "requests with multiple values for '#{key}' cannot be parsed"
-          raise Errors::RequestParserError, error_message
+        def assets
+          @requests.map do |request|
+            body = JSON.parse(request.body)
+            body = body.is_a?(Hash) ? body : JSON.parse(body)
+            body["asset"]
+          end
         end
       end
     end

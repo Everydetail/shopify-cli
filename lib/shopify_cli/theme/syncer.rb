@@ -136,9 +136,10 @@ module ShopifyCLI
       end
 
       def shutdown
+        @api_client.shutdown
         @queue.close unless @queue.closed?
       ensure
-        @threads.each { |thread| p thread; thread.join if thread.alive? }
+        @threads.each { |thread| thread.join if thread.alive? }
       end
 
       def start_threads(count = 2)
@@ -252,16 +253,16 @@ module ShopifyCLI
             used, total = limit.split("/").map(&:to_i)
             backoff_if_near_limit!(used, total)
           end
+
+          @pending.delete(operation)
         end
       rescue ShopifyCLI::API::APIRequestError => e
         error_suffix = ":\n  " + parse_api_errors(e).join("\n  ")
         report_error(operation, error_suffix)
-      ensure
-        @pending.delete(operation)
       end
 
       def update(file)
-        asset = { key: file.relative_path, size: file.size }
+        asset = { key: file.relative_path }
 
         if file.text?
           asset[:value] = file.read

@@ -4,13 +4,14 @@ require "forwardable"
 
 require_relative "theme_admin_api_throttler/bulk"
 require_relative "theme_admin_api_throttler/errors"
+require_relative "theme_admin_api_throttler/put_request"
 
 module ShopifyCLI
   module Theme
     class ThemeAdminAPIThrottler
       extend Forwardable
 
-      def_delegators :@admin_api, :get, :post, :delete, :rest_request
+      def_delegators :@admin_api, :get, :post, :delete
 
       def initialize(ctx, admin_api)
         @ctx = ctx
@@ -20,18 +21,12 @@ module ShopifyCLI
       end
 
       def put(path:, **args, &block)
-        asset_size = JSON.parse(args[:body])["asset"]["size"]
-        if active? && asset_size <= Bulk::MAX_BULK_SIZE # if bulking is active and valid
-          bulk_request(method: "PUT", path: bulk_path(path), **args, &block)
+        request = PutRequest.new(path, args[:body], &block)
+        if active?
+          bulk_request(request)
         else
-          rest_request(method: "PUT", path: path, **args, &block)
+          rest_request(request)
         end
-
-      rescue Errors::TimeoutError
-        @ctx.debug("throttling timeout: #{path} => #{args}")
-
-        # performs the regular request as a fallback
-        rest_request(method: "PUT", path: path, **args)
       end
 
       def activate!
@@ -46,25 +41,18 @@ module ShopifyCLI
         @active
       end
 
+      def shutdown
+        @bulk.shutdown
+      end
+
       private
 
-      def bulk_request(method:, path:, **args, &block)
-        request = format_request(method: method, path: path, **args)
-        @bulk.enqueue(request, &block)
+      def rest_request(request)
+        @admin_api.rest_request(**request.to_h, &request.block)
       end
 
-      def bulk_path(path)
-        path.gsub(/.json$/, "/bulk.json")
-      end
-
-      def format_request(method:, path:, **args)
-        {
-          shop: @admin_api.shop,
-          path: path,
-          method: method,
-          api_version: ThemeAdminAPI::API_VERSION, #TODO: need access to the API_VERSION
-          body: args[:body].is_a?(Hash) ? args[:body] : JSON.parse(args[:body])
-        }
+      def bulk_request(request)
+        @bulk.enqueue(request)
       end
     end
   end
