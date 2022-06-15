@@ -35,7 +35,7 @@ module ShopifyCLI
                 end
               else
                 @block_mutex.synchronize do
-                  err = ShopifyCLI::API::APIRequestError.new(response: body)
+                  err = ShopifyCLI::API::APIRequestError.new(response: { body: body })
                   put_request.block.call(status, err, nil)
                 end
               end

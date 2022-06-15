@@ -247,6 +247,7 @@ module ShopifyCLI
         @ctx.debug(operation.to_s)
 
         send(operation.method, operation.file) do |response, error|
+          raise error if error
           @standard_reporter.report(operation.as_synced_message)
 
           # Check if the API told us we're near the rate limit
@@ -254,10 +255,14 @@ module ShopifyCLI
             used, total = limit.split("/").map(&:to_i)
             backoff_if_near_limit!(used, total)
           end
+
+        rescue ShopifyCLI::API::APIRequestError => e
+          handle_asset_upload_error(operation, e)
+        ensure
+          @pending.delete(operation)
         end
       rescue ShopifyCLI::API::APIRequestError => e
-        error_suffix = ":\n  " + parse_api_errors(e).join("\n  ")
-        report_error(operation, error_suffix)
+        handle_asset_upload_error(operation, e)
       ensure
         @pending.delete(operation)
       end
@@ -344,7 +349,11 @@ module ShopifyCLI
       end
 
       def parse_api_errors(exception)
-        parsed_body = JSON.parse(exception&.response&.body)
+        if exception&.response&.is_a?(Hash)
+          parsed_body = exception&.response&.[](:body)
+        else
+          parsed_body = JSON.parse(exception&.response&.body)
+        end
         message = parsed_body.dig("errors", "asset") || parsed_body["message"] || exception.message
         # Truncate to first lines
         [message].flatten.map { |m| m.split("\n", 2).first }
@@ -374,6 +383,11 @@ module ShopifyCLI
 
       def async_done?
         @api_client.batch
+      end
+
+      def handle_asset_upload_error(operation, error)
+        error_suffix = ":\n  " + parse_api_errors(error).join("\n  ")
+        report_error(operation, error_suffix)
       end
     end
   end

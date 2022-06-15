@@ -64,11 +64,6 @@ module ShopifyCLI
               end
             end
           end
-
-          puts "consume_put_requests ================="
-          puts "size:     #{to_batch.size}"
-          puts "bytesize: #{(to_batch.map(&:size).reduce(:+).to_f / 1000000).round(2)}MB"
-
           to_batch
         end
 

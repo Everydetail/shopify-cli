@@ -16,7 +16,7 @@ module ShopifyCLI
       def initialize(ctx, admin_api)
         @ctx = ctx
         @admin_api = admin_api
-        @active = true
+        @active = !true
         @bulk = Bulk.new(@admin_api)
       end
 
