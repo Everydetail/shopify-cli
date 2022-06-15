@@ -10,20 +10,19 @@ module ShopifyCLI
       def setup
         super
         root = ShopifyCLI::ROOT + "/test/fixtures/theme"
-        @ctx = TestHelpers::FakeContext.new(root: root)
-        @theme = Theme.new(@ctx, root: root)
-        @syncer = Syncer.new(@ctx, theme: @theme)
+        ShopifyCLI::DB
+          .stubs(:get)
+          .with(:development_theme_id)
+          .returns("12345678")
 
         ShopifyCLI::DB.stubs(:exists?).with(:shop).returns(true)
         ShopifyCLI::DB
           .stubs(:get)
           .with(:shop)
           .returns("dev-theme-server-store.myshopify.com")
-        ShopifyCLI::DB
-          .stubs(:get)
-          .with(:development_theme_id)
-          .returns("12345678")
-
+        @ctx = TestHelpers::FakeContext.new(root: root)
+        @theme = Theme.new(@ctx, root: root)
+        @syncer = Syncer.new(@ctx, theme: @theme)
         File.any_instance.stubs(:write)
       end
 
@@ -538,6 +537,7 @@ module ShopifyCLI
       end
 
       def test_log_api_errors
+
         mock_context_error_message
         @ctx.expects(:error).with(<<~EOS.chomp)
           12:30:59 {{red:ERROR }} {{>}} {{blue:update sections/footer.liquid}}:

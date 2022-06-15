@@ -65,6 +65,7 @@ module ShopifyCLI
         # Checksums of assets with errors.
         @error_checksums = []
 
+        # Initialize api_client on main thread to avoid sync issues
         @api_client = ThemeAdminAPIThrottler.new(
           @ctx,
           ThemeAdminAPI.new(@ctx, @theme.shop)
@@ -245,7 +246,7 @@ module ShopifyCLI
         wait_for_backoff!
         @ctx.debug(operation.to_s)
 
-        send(operation.method, operation.file) do |response|
+        send(operation.method, operation.file) do |response, error|
           @standard_reporter.report(operation.as_synced_message)
 
           # Check if the API told us we're near the rate limit
@@ -253,12 +254,12 @@ module ShopifyCLI
             used, total = limit.split("/").map(&:to_i)
             backoff_if_near_limit!(used, total)
           end
-
-          @pending.delete(operation)
         end
       rescue ShopifyCLI::API::APIRequestError => e
         error_suffix = ":\n  " + parse_api_errors(e).join("\n  ")
         report_error(operation, error_suffix)
+      ensure
+        @pending.delete(operation)
       end
 
       def update(file)
@@ -273,9 +274,13 @@ module ShopifyCLI
         path = "themes/#{@theme.id}/assets.json"
         req_body = JSON.generate(asset: asset)
 
-        @api_client.put(path: path, body: req_body) do |_s, resp_body, response|
-          update_checksums(resp_body)
-          yield(response)
+        @api_client.put(path: path, body: req_body) do |status, resp_body, response|
+          if status == 200
+            update_checksums(resp_body)
+            yield(response, nil)
+          else
+            yield(response, resp_body)
+          end
         end
       end
 
@@ -294,7 +299,7 @@ module ShopifyCLI
           file.write(body.dig("asset", "value"))
         end
 
-        yield(response)
+        yield(response, nil)
       end
 
       def delete(file)
@@ -305,7 +310,7 @@ module ShopifyCLI
           })
         )
 
-        yield(response)
+        yield(response, nil)
       end
 
       def union_merge(file)
@@ -326,7 +331,7 @@ module ShopifyCLI
 
         enqueue(:update, file)
 
-        yield(response)
+        yield(response, nil)
       end
 
       def update_checksums(api_response)

@@ -30,7 +30,6 @@ module ShopifyCLI
           end
 
           @put_requests = []
-
           @mut = Mutex.new
         end
 
@@ -49,70 +48,26 @@ module ShopifyCLI
         end
 
         def consume_put_requests
-          
           to_batch = []
-
+          to_batch_size_bytes = 0
           @mut.synchronize do
             is_ready = false
-            while !is_ready
-              request = @put_requests.shift
+            while !is_ready && !@put_requests.empty?
+              request = @put_requests.first
 
-              to_batch_temp = [*to_batch, request]
-              bulk_size = to_batch_temp.size
-              bulk_bytesize = to_batch_temp.map(&:size).reduce(:+).to_f
-              
-              if bulk_size >= MAX_BULK_FILES || bulk_bytesize >= MAX_BULK_BYTESIZE
+              if to_batch.size + 1 > MAX_BULK_FILES || to_batch_size_bytes + request.size > MAX_BULK_BYTESIZE
                 is_ready = true
-                request = @put_requests.unshift(request)
               else
                 to_batch << request
+                to_batch_size_bytes += request.size
+                @put_requests.shift
               end
             end
           end
-          
+
           puts "consume_put_requests ================="
           puts "size:     #{to_batch.size}"
           puts "bytesize: #{(to_batch.map(&:size).reduce(:+).to_f / 1000000).round(2)}MB"
-
-          to_batch
-
-          #
-          # ---------------------------------
-          # I've noticed order of assets is important, otherwise the backend
-          # blocks the upload (e.g., when a file reference other that doesn't
-          # exist)
-          # ---------------------------------
-          #
-          # to_batch = []
-          # @mut.synchronize do
-          #   # nlogn
-          #   sorted = @put_requests.sort { |r1, r2| r1.size <=> r2.size }
-          #   cutoff = 0
-          #   batch_size = 0
-          #   # n
-          #   sorted.each.with_index do |r, idx|
-          #     size = r.size
-          #     if idx >= MAX_BULK_FILES || batch_size + size > MAX_BULK_BYTESIZE
-          #       cutoff = idx
-          #       break
-          #     end
-          #     to_batch << r
-          #     batch_size += size
-          #   end
-          #   # n
-          #   # puts "Before Slice: #{bulk_size}"
-          #   @put_requests.slice!(0, cutoff)
-          #   # puts "After Slice: #{bulk_size}"
-
-          #   if to_batch == @put_requests
-          #     # FIXME: (last 4 files were never been taken)
-          #     @put_requests.clear
-          #   end
-          # end
-          
-          # puts "consume_put_requests ================="
-          # puts "size:     #{to_batch.size}"
-          # puts "bytesize: #{(to_batch.map(&:size).reduce(:+).to_f / 1000000).round(2)}MB"
 
           to_batch
         end

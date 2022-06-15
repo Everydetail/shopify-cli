@@ -22,36 +22,25 @@ module ShopifyCLI
 
         def perform!
           return unless bulk.ready?
-
           put_requests = bulk.consume_put_requests
-
           bulk_status, bulk_body, response = rest_request(put_requests)
 
           if bulk_status == 207
             responses(bulk_body).each_with_index do |tuple, index|
               status, body = tuple
+              put_request = put_requests[index]
               if status == 200
-                put_request = put_requests[index]
-
                 @block_mutex.synchronize do
                   put_request.block.call(status, body, response)
                 end
               else
-                # TOOD: handle errors
-                puts "[BulkJob] assest upload error =>"
-                p status
-                # p body
+                @block_mutex.synchronize do
+                  err = ShopifyCLI::API::APIRequestError.new(response: body)
+                  put_request.block.call(status, err, nil)
+                end
               end
             end
-          else
-            # TODO: handle errors
-            puts "[BulkJob] bulk request error =>"
-            p bulk_status
           end
-  
-        rescue => e
-          puts "[BulkJob] error =>"
-          p e
         end
 
         private

@@ -30,7 +30,7 @@ module ShopifyCLI
         end
 
         def size
-          body.bytesize
+          @size ||= body.bytesize
         end
       end
     end

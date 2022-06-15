@@ -49,6 +49,8 @@ module ShopifyCLI
 
       def rest_request(request)
         @admin_api.rest_request(**request.to_h, &request.block)
+      rescue => error
+        request.block.call(nil, error, nil)
       end
 
       def bulk_request(request)
