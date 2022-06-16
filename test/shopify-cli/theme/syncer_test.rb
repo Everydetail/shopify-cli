@@ -10,6 +10,7 @@ module ShopifyCLI
       def setup
         super
         root = ShopifyCLI::ROOT + "/test/fixtures/theme"
+        Environment.stubs(:admin_auth_token).returns("env_token")
         ShopifyCLI::DB
           .stubs(:get)
           .with(:development_theme_id)
@@ -55,6 +56,38 @@ module ShopifyCLI
           },
           {},
         ])
+
+        @syncer.enqueue_updates([@theme["assets/theme.css"]])
+        @syncer.wait!
+      end
+
+      def test_update_text_file_bulk
+        @syncer.start_threads
+        ShopifyCLI::AdminAPI.expects(:rest_request).with(
+          @ctx,
+          shop: @theme.shop,
+          path: "themes/#{@theme.id}/assets/bulk.json",
+          api_version: "unstable",
+          method: "PUT",
+          body: JSON.generate({
+            asset: {
+              key: "assets/theme.css",
+              value: @theme["assets/theme.css"].read,
+            },
+          })
+        ).returns(
+          [
+            [
+              200,
+              {
+                "asset" => {
+                  "key" => "assets/theme.css",
+                  "checksum" => @theme["assets/theme.css"].checksum,
+                },
+              },
+            ],
+          ],
+        )
 
         @syncer.enqueue_updates([@theme["assets/theme.css"]])
         @syncer.wait!
@@ -537,7 +570,6 @@ module ShopifyCLI
       end
 
       def test_log_api_errors
-
         mock_context_error_message
         @ctx.expects(:error).with(<<~EOS.chomp)
           12:30:59 {{red:ERROR }} {{>}} {{blue:update sections/footer.liquid}}:
@@ -689,6 +721,8 @@ module ShopifyCLI
 
         refute(@syncer.broken_file?(file))
       end
+
+      # ASYNC BATCH
 
       private
 

@@ -9,9 +9,9 @@ module ShopifyCLI
     class ThemeAdminAPIThrottler
       class Bulk
         KILOBYTE = 1_024
-        MEGABYTE = KILOBYTE * 1_024
-        MAX_BULK_BYTESIZE = MEGABYTE * 1 # (change to 5MB or 10MB) Spin limit seems to be 1MB
-        MAX_BULK_FILES = 10 # files
+        MEGABYTE = KILOBYTE << 10
+        MAX_BULK_BYTESIZE = MEGABYTE * 10 # (change to 5MB or 10MB) Spin limit seems to be 1MB
+        MAX_BULK_FILES = 30 # files
         QUEUE_TIMEOUT = 0.2 # 200ms
 
         attr_accessor :admin_api
@@ -41,9 +41,7 @@ module ShopifyCLI
         end
 
         def shutdown
-          while !@put_requests.empty?
-            sleep(0.2)
-          end
+          sleep(0.2) until @put_requests.empty?
           @thread_pool.shutdown
         end
 
@@ -52,7 +50,7 @@ module ShopifyCLI
           to_batch_size_bytes = 0
           @mut.synchronize do
             is_ready = false
-            while !is_ready && !@put_requests.empty?
+            until is_ready || @put_requests.empty?
               request = @put_requests.first
 
               if to_batch.size + 1 > MAX_BULK_FILES || to_batch_size_bytes + request.size > MAX_BULK_BYTESIZE

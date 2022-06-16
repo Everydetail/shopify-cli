@@ -39,7 +39,6 @@ module ShopifyCLI
           api_version: API_VERSION,
           **args.compact
         )
-
         return yield(status, body, response) if block_given?
 
         [status, body, response]

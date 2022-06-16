@@ -255,7 +255,6 @@ module ShopifyCLI
             used, total = limit.split("/").map(&:to_i)
             backoff_if_near_limit!(used, total)
           end
-
         rescue ShopifyCLI::API::APIRequestError => e
           handle_asset_upload_error(operation, e)
         ensure
@@ -349,10 +348,10 @@ module ShopifyCLI
       end
 
       def parse_api_errors(exception)
-        if exception&.response&.is_a?(Hash)
-          parsed_body = exception&.response&.[](:body)
+        parsed_body = if exception&.response&.is_a?(Hash)
+          exception&.response&.[](:body)
         else
-          parsed_body = JSON.parse(exception&.response&.body)
+          JSON.parse(exception&.response&.body)
         end
         message = parsed_body.dig("errors", "asset") || parsed_body["message"] || exception.message
         # Truncate to first lines
@@ -379,10 +378,6 @@ module ShopifyCLI
       def wait_for_backoff!
         # Sleeping in the mutex in another thread. Wait for unlock
         @backoff_mutex.synchronize {} if backingoff?
-      end
-
-      def async_done?
-        @api_client.batch
       end
 
       def handle_asset_upload_error(operation, error)
