@@ -10,17 +10,16 @@ module ShopifyCLI
       class Bulk
         KILOBYTE = 1_024
         MEGABYTE = KILOBYTE << 10
-        MAX_BULK_BYTESIZE = MEGABYTE * 10 # (change to 5MB or 10MB) Spin limit seems to be 1MB
+        MAX_BULK_BYTESIZE = MEGABYTE * 5 # (change to 5MB or 10MB) Spin limit seems to be 1MB
         MAX_BULK_FILES = 30 # files
         QUEUE_TIMEOUT = 0.2 # 200ms
 
         attr_accessor :admin_api
 
-        def initialize(admin_api)
+        def initialize(admin_api, pool_size: 1)
           @admin_api = admin_api
           @latest_enqueued_at = now
 
-          pool_size = 1
           @thread_pool = ShopifyCLI::ThreadPool.new(pool_size: pool_size)
 
           pool_size.times do
@@ -52,7 +51,6 @@ module ShopifyCLI
             is_ready = false
             until is_ready || @put_requests.empty?
               request = @put_requests.first
-
               if to_batch.size + 1 > MAX_BULK_FILES || to_batch_size_bytes + request.size > MAX_BULK_BYTESIZE
                 is_ready = true
               else

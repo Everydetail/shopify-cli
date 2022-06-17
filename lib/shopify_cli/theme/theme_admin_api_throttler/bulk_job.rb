@@ -40,6 +40,9 @@ module ShopifyCLI
                 end
               end
             end
+          else
+            puts "status: #{bulk_status}"
+            handle_requeue
           end
         end
 
@@ -52,6 +55,10 @@ module ShopifyCLI
 
         def responses(response_body)
           ResponseParser.new(response_body).parse
+        end
+
+        def handle_requeue
+          # handles the retrying of the request
         end
       end
     end

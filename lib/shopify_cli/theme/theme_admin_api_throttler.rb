@@ -22,7 +22,7 @@ module ShopifyCLI
 
       def put(path:, **args, &block)
         request = PutRequest.new(path, args[:body], &block)
-        if active?
+        if active? && request.size >= Bulk::MAX_BULK_BYTESIZE
           bulk_request(request)
         else
           rest_request(request)
