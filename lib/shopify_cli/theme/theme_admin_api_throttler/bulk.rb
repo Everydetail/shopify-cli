@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "errors"
 require_relative "bulk_job"
 require "shopify_cli/thread_pool"
 
@@ -50,6 +49,7 @@ module ShopifyCLI
           @mut.synchronize do
             # sort requests to perform less retries at the `bulk_job`` level
             @put_requests.sort_by! { |r| r.liquid? ? 0 : 1 }
+
             is_ready = false
             until is_ready || @put_requests.empty?
               request = @put_requests.first

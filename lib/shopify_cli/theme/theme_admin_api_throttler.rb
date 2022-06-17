@@ -3,7 +3,6 @@
 require "forwardable"
 
 require_relative "theme_admin_api_throttler/bulk"
-require_relative "theme_admin_api_throttler/errors"
 require_relative "theme_admin_api_throttler/put_request"
 
 module ShopifyCLI

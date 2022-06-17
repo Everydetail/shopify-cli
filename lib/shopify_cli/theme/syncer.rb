@@ -251,8 +251,7 @@ module ShopifyCLI
         wait_for_backoff!
         @ctx.debug(operation.to_s)
 
-        send(operation.method, operation.file) do |response, error = nil|
-          raise error unless error.nil?
+        send(operation.method, operation.file) do |response|
           begin
             @standard_reporter.report(operation.as_synced_message)
 
@@ -261,22 +260,21 @@ module ShopifyCLI
               used, total = limit.split("/").map(&:to_i)
               backoff_if_near_limit!(used, total)
             end
-          rescue ShopifyCLI::API::APIRequestError => e
-            handle_asset_upload_error(operation, e)
           ensure
             @pending_mutex.synchronize do
-              sleep(0.05) # animate the syncbar
+              # Avoid abrupt jumps in the progress bar
+              sleep(0.05)
               @pending.delete(operation)
             end
           end
         end
       rescue ShopifyCLI::API::APIRequestError => e
-        handle_asset_upload_error(operation, e)
+        error_suffix = ":\n  " + parse_api_errors(e).join("\n  ")
+        report_error(operation, error_suffix)
       end
 
       def update(file)
         asset = { key: file.relative_path }
-
         if file.text?
           asset[:value] = file.read
         else
@@ -287,12 +285,8 @@ module ShopifyCLI
         req_body = JSON.generate(asset: asset)
 
         api_client.put(path: path, body: req_body) do |status, resp_body, response|
-          if status == 200
-            update_checksums(resp_body)
-            yield(response)
-          else
-            yield(response, resp_body)
-          end
+          update_checksums(resp_body)
+          yield(response)
         end
       end
 
@@ -356,11 +350,7 @@ module ShopifyCLI
       end
 
       def parse_api_errors(exception)
-        parsed_body = if exception&.response&.is_a?(Hash)
-          exception&.response&.[](:body)
-        else
-          JSON.parse(exception&.response&.body)
-        end
+        parsed_body = JSON.parse(exception&.response&.body)
         message = parsed_body.dig("errors", "asset") || parsed_body["message"] || exception.message
         # Truncate to first lines
         [message].flatten.map { |m| m.split("\n", 2).first }
@@ -386,11 +376,6 @@ module ShopifyCLI
       def wait_for_backoff!
         # Sleeping in the mutex in another thread. Wait for unlock
         @backoff_mutex.synchronize {} if backingoff?
-      end
-
-      def handle_asset_upload_error(operation, error)
-        error_suffix = ":\n  " + parse_api_errors(error).join("\n  ")
-        report_error(operation, error_suffix)
       end
     end
   end
