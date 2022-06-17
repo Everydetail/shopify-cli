@@ -32,7 +32,7 @@ module ShopifyCLI
         :union_merge, # - Union merges the local file content with the remote file content
       ]
 
-      attr_reader :theme, :checksums, :error_checksums
+      attr_reader :theme, :checksums, :error_checksums, :api_client
       attr_accessor :include_filter, :ignore_filter
 
       def_delegators :@error_reporter, :has_any_error?
@@ -59,13 +59,16 @@ module ShopifyCLI
         # Mutex used to pause all threads when backing-off when hitting API rate limits
         @backoff_mutex = Mutex.new
 
+        # Mutex used to coordinate changes in the `pending` list
+        @pending_mutex = Mutex.new
+
         # Latest theme assets checksums. Updated on each upload.
         @checksums = Checksums.new(theme)
 
         # Checksums of assets with errors.
         @error_checksums = []
 
-        # Initialize api_client on main thread to avoid sync issues
+        # Initialize `api_client` on main thread
         @api_client = ThemeAdminAPIThrottler.new(
           @ctx,
           ThemeAdminAPI.new(@ctx, @theme.shop)
@@ -130,14 +133,14 @@ module ShopifyCLI
       end
 
       def fetch_checksums!
-        _status, response = @api_client.get(
+        _status, response = api_client.get(
           path: "themes/#{@theme.id}/assets.json"
         )
         update_checksums(response)
       end
 
       def shutdown
-        @api_client.shutdown
+        api_client.shutdown
         @queue.close unless @queue.closed?
       ensure
         @threads.each { |thread| thread.join if thread.alive? }
@@ -189,6 +192,8 @@ module ShopifyCLI
         unless delay_low_priority_files
           wait!(&block)
         end
+
+        enqueue_delayed_files_updates
       end
 
       def download_theme!(delete: true, &block)
@@ -246,24 +251,27 @@ module ShopifyCLI
         wait_for_backoff!
         @ctx.debug(operation.to_s)
 
-        send(operation.method, operation.file) do |response, error|
-          raise error if error
-          @standard_reporter.report(operation.as_synced_message)
+        send(operation.method, operation.file) do |response, error = nil|
+          raise error unless error.nil?
+          begin
+            @standard_reporter.report(operation.as_synced_message)
 
-          # Check if the API told us we're near the rate limit
-          if !backingoff? && (limit = response["x-shopify-shop-api-call-limit"])
-            used, total = limit.split("/").map(&:to_i)
-            backoff_if_near_limit!(used, total)
+            # Check if the API told us we're near the rate limit
+            if !backingoff? && (limit = response["x-shopify-shop-api-call-limit"])
+              used, total = limit.split("/").map(&:to_i)
+              backoff_if_near_limit!(used, total)
+            end
+          rescue ShopifyCLI::API::APIRequestError => e
+            handle_asset_upload_error(operation, e)
+          ensure
+            @pending_mutex.synchronize do
+              sleep(0.05) # animate the syncbar
+              @pending.delete(operation)
+            end
           end
-        rescue ShopifyCLI::API::APIRequestError => e
-          handle_asset_upload_error(operation, e)
-        ensure
-          @pending.delete(operation)
         end
       rescue ShopifyCLI::API::APIRequestError => e
         handle_asset_upload_error(operation, e)
-      ensure
-        @pending.delete(operation)
       end
 
       def update(file)
@@ -278,10 +286,10 @@ module ShopifyCLI
         path = "themes/#{@theme.id}/assets.json"
         req_body = JSON.generate(asset: asset)
 
-        @api_client.put(path: path, body: req_body) do |status, resp_body, response|
+        api_client.put(path: path, body: req_body) do |status, resp_body, response|
           if status == 200
             update_checksums(resp_body)
-            yield(response, nil)
+            yield(response)
           else
             yield(response, resp_body)
           end
@@ -289,7 +297,7 @@ module ShopifyCLI
       end
 
       def get(file)
-        _status, body, response = @api_client.get(
+        _status, body, response = api_client.get(
           path: "themes/#{@theme.id}/assets.json",
           query: URI.encode_www_form("asset[key]" => file.relative_path),
         )
@@ -303,22 +311,22 @@ module ShopifyCLI
           file.write(body.dig("asset", "value"))
         end
 
-        yield(response, nil)
+        yield(response)
       end
 
       def delete(file)
-        _status, _body, response = @api_client.delete(
+        _status, _body, response = api_client.delete(
           path: "themes/#{@theme.id}/assets.json",
           body: JSON.generate(asset: {
             key: file.relative_path,
           })
         )
 
-        yield(response, nil)
+        yield(response)
       end
 
       def union_merge(file)
-        _status, body, response = @api_client.get(
+        _status, body, response = api_client.get(
           path: "themes/#{@theme.id}/assets.json",
           query: URI.encode_www_form("asset[key]" => file.relative_path),
         )
@@ -335,7 +343,7 @@ module ShopifyCLI
 
         enqueue(:update, file)
 
-        yield(response, nil)
+        yield(response)
       end
 
       def update_checksums(api_response)

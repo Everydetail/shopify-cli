@@ -13,16 +13,16 @@ module ShopifyCLI
 
       def_delegators :@admin_api, :get, :post, :delete
 
-      def initialize(ctx, admin_api)
+      def initialize(ctx, admin_api, active = true)
         @ctx = ctx
         @admin_api = admin_api
-        @active = !true
-        @bulk = Bulk.new(@admin_api)
+        @active = active
+        @bulk = Bulk.new(ctx, admin_api)
       end
 
       def put(path:, **args, &block)
         request = PutRequest.new(path, args[:body], &block)
-        if active? && request.size >= Bulk::MAX_BULK_BYTESIZE
+        if active?
           bulk_request(request)
         else
           rest_request(request)
@@ -42,7 +42,7 @@ module ShopifyCLI
       end
 
       def shutdown
-        @bulk.shutdown
+        @bulk.shutdown if active?
       end
 
       private

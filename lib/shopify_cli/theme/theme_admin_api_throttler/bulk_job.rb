@@ -12,8 +12,9 @@ module ShopifyCLI
 
         attr_reader :bulk
 
-        def initialize(bulk)
+        def initialize(ctx, bulk)
           super(JOB_TIMEOUT)
+          @ctx = ctx
           @bulk = bulk
 
           # Mutex used to coordinate changes performed by the bulk item block
@@ -23,26 +24,29 @@ module ShopifyCLI
         def perform!
           return unless bulk.ready?
           put_requests = bulk.consume_put_requests
+
           bulk_status, bulk_body, response = rest_request(put_requests)
 
           if bulk_status == 207
             responses(bulk_body).each_with_index do |tuple, index|
               status, body = tuple
               put_request = put_requests[index]
-              if status == 200
+              if status == 200 || put_request.retries > 5
+                @ctx.debug("[BulkJob] asset saved: #{put_request}")
                 @block_mutex.synchronize do
                   put_request.block.call(status, body, response)
                 end
               else
+                @ctx.debug("[BulkJob] asset error: #{put_request}")
                 @block_mutex.synchronize do
-                  err = ShopifyCLI::API::APIRequestError.new(response: { body: body })
-                  put_request.block.call(status, err, nil)
+                  put_request.retries += 1
+                  bulk.enqueue(put_request)
                 end
               end
             end
           else
-            puts "status: #{bulk_status}"
-            handle_requeue
+            # ignore
+            @ctx.puts("Suggest --stable flag")
           end
         end
 
@@ -55,10 +59,6 @@ module ShopifyCLI
 
         def responses(response_body)
           ResponseParser.new(response_body).parse
-        end
-
-        def handle_requeue
-          # handles the retrying of the request
         end
       end
     end
